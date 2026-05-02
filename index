@@ -24,49 +24,59 @@
     }
   </style>
 </head>
-<body class="bg-slate-50 min-h-screen p-4 md:p-8 font-sans text-slate-800">
+<body class="bg-slate-50 min-h-screen font-sans text-slate-800">
 
-  <div class="max-w-6xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
-    <!-- Header -->
-    <div class="bg-blue-600 p-6 text-white text-center">
-      <h1 class="text-3xl font-bold">Enrollment Dashboard</h1>
-      <p class="text-blue-100 mt-2">Select a sheet below to view data and charts.</p>
-    </div>
+  <!-- Standalone Mode Banner -->
+  <div id="standalone-banner" class="hidden bg-amber-100 text-amber-800 border-b border-amber-200 text-center px-4 py-2 text-sm font-medium flex items-center justify-center gap-2">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+      <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+    </svg>
+    Running in Standalone/GitHub Mode. Displaying sample mock data because Google Apps Script is not connected.
+  </div>
 
-    <div class="p-6">
-      <!-- Navigation Menu (Buttons for each sheet) -->
-      <div id="nav-container" class="flex flex-wrap gap-3 justify-center mb-8 pb-6 border-b border-slate-200">
-        <!-- Spinner while loading sheet names -->
-        <div id="nav-loading" class="loader ease-linear rounded-full border-4 border-t-4 border-slate-200 h-8 w-8"></div>
+  <div class="p-4 md:p-8">
+    <div class="max-w-6xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
+      <!-- Header -->
+      <div class="bg-blue-600 p-6 text-white text-center">
+        <h1 class="text-3xl font-bold">Enrollment Dashboard</h1>
+        <p class="text-blue-100 mt-2">Select a sheet below to view data and charts.</p>
       </div>
 
-      <!-- Main Content Area -->
-      <div id="content-area" class="hidden">
-        
-        <h2 id="current-sheet-title" class="text-2xl font-bold text-center mb-6 text-slate-700"></h2>
-
-        <!-- Data Loading State -->
-        <div id="data-loading" class="hidden flex flex-col items-center justify-center py-12">
-          <div class="loader ease-linear rounded-full border-4 border-t-4 border-slate-200 h-12 w-12 mb-4"></div>
-          <p class="text-slate-500 font-medium">Fetching data from Google Sheets...</p>
+      <div class="p-6">
+        <!-- Navigation Menu (Buttons for each sheet) -->
+        <div id="nav-container" class="flex flex-wrap gap-3 justify-center mb-8 pb-6 border-b border-slate-200">
+          <!-- Spinner while loading sheet names -->
+          <div id="nav-loading" class="loader ease-linear rounded-full border-4 border-t-4 border-slate-200 h-8 w-8"></div>
         </div>
 
-        <!-- Error Message Container -->
-        <div id="error-message" class="hidden bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6" role="alert">
-          <p id="error-text"></p>
-        </div>
+        <!-- Main Content Area -->
+        <div id="content-area" class="hidden">
+          
+          <h2 id="current-sheet-title" class="text-2xl font-bold text-center mb-6 text-slate-700"></h2>
 
-        <!-- Table Container -->
-        <div class="overflow-x-auto shadow-sm rounded-lg mb-10 border border-slate-300 hidden" id="table-container">
-          <table id="data-table" class="min-w-full text-sm sm:text-base">
-            <thead id="table-head" class="bg-slate-100"></thead>
-            <tbody id="table-body" class="bg-white"></tbody>
-          </table>
-        </div>
+          <!-- Data Loading State -->
+          <div id="data-loading" class="hidden flex flex-col items-center justify-center py-12">
+            <div class="loader ease-linear rounded-full border-4 border-t-4 border-slate-200 h-12 w-12 mb-4"></div>
+            <p class="text-slate-500 font-medium">Fetching data...</p>
+          </div>
 
-        <!-- Charts Container -->
-        <div id="charts-container" class="flex flex-col items-center gap-8"></div>
-        
+          <!-- Error Message Container -->
+          <div id="error-message" class="hidden bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6" role="alert">
+            <p id="error-text"></p>
+          </div>
+
+          <!-- Table Container -->
+          <div class="overflow-x-auto shadow-sm rounded-lg mb-10 border border-slate-300 hidden" id="table-container">
+            <table id="data-table" class="min-w-full text-sm sm:text-base">
+              <thead id="table-head" class="bg-slate-100"></thead>
+              <tbody id="table-body" class="bg-white"></tbody>
+            </table>
+          </div>
+
+          <!-- Charts Container -->
+          <div id="charts-container" class="flex flex-col items-center gap-8"></div>
+          
+        </div>
       </div>
     </div>
   </div>
@@ -75,6 +85,8 @@
     // ----------------------------------------------------
     // Initialization
     // ----------------------------------------------------
+    let isStandaloneMode = false;
+
     document.addEventListener('DOMContentLoaded', () => {
       // Check if running inside Google Apps Script environment
       if (typeof google !== 'undefined' && google.script && google.script.run) {
@@ -83,9 +95,15 @@
           .withSuccessHandler(initializeNavigation)
           .getSheetNames();
       } else {
-        // Provide mock data if viewing outside of Google Apps Script (like in this preview)
-        console.warn("Google Apps Script environment not detected. Using mock data for preview.");
-        initializeNavigation(['Mock Sheet 1', 'Mock Sheet 2']);
+        // Provide mock data if viewing outside of Google Apps Script (e.g., GitHub Pages)
+        isStandaloneMode = true;
+        document.getElementById('standalone-banner').classList.remove('hidden');
+        console.warn("Google Apps Script environment not detected. Initializing standalone mode.");
+        
+        // Simulate network delay for realistic feel
+        setTimeout(() => {
+          initializeNavigation(['2024 Enrollments', 'Demographics Data', 'Course Distribution']);
+        }, 500);
       }
     });
 
@@ -142,24 +160,46 @@
       document.getElementById('data-loading').classList.remove('hidden');
 
       // Fetch data
-      if (typeof google !== 'undefined' && google.script && google.script.run) {
+      if (!isStandaloneMode) {
         google.script.run
           .withSuccessHandler(renderData)
           .getSheetData(sheetName);
       } else {
-        // Provide mock data for previewing
+        // Provide mock data for GitHub Pages/Standalone mode
         setTimeout(() => {
+          let mockData = [];
+          if (sheetName === '2024 Enrollments') {
+            mockData = [
+              ['Student ID', 'Full Name', 'Major', 'Enrollment Status', 'Date Enrolled'],
+              ['STU-24-001', 'Alice Cooper', 'Computer Science', 'Active', '2024-01-10'],
+              ['STU-24-002', 'Bob Builder', 'Civil Engineering', 'Active', '2024-01-12'],
+              ['STU-24-003', 'Charlie Brown', 'Psychology', 'Withdrawn', '2024-02-05'],
+              ['STU-24-004', 'Diana Prince', 'History', 'Active', '2024-01-15']
+            ];
+          } else if (sheetName === 'Demographics Data') {
+            mockData = [
+              ['Region', 'New Students', 'Returning Students', 'Total'],
+              ['North', '120', '350', '470'],
+              ['South', '95', '280', '375'],
+              ['East', '150', '410', '560'],
+              ['West', '80', '190', '270']
+            ];
+          } else {
+            mockData = [
+              ['Course Code', 'Course Name', 'Credits', 'Enrolled Count'],
+              ['CS101', 'Intro to Programming', '3', '150'],
+              ['ENG201', 'Advanced Literature', '3', '85'],
+              ['MAT301', 'Calculus II', '4', '110'],
+              ['PHY101', 'General Physics', '4', '95']
+            ];
+          }
+
           renderData({
             success: true,
-            data: [
-              ['Student ID', 'Name', 'Course', 'Status', 'Enrollment Date'],
-              ['1001', 'John Doe', 'Computer Science', 'Enrolled', '2023-08-15'],
-              ['1002', 'Jane Smith', 'Business Admin', 'Enrolled', '2023-08-16'],
-              ['1003', 'Bob Johnson', 'Engineering', 'Dropped', '2023-09-01']
-            ],
+            data: mockData,
             charts: [] // Normally base64 chart strings would go here
           });
-        }, 600);
+        }, 800);
       }
     }
 
