@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Tailwind CSS for rapid styling -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Custom Loading Spinner */
+    .loader {
+      border-top-color: #3b82f6;
+      -webkit-animation: spinner 1s linear infinite;
+      animation: spinner 1s linear infinite;
+    }
+    @keyframes spinner {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    /* Table Styling Enhancements */
+    table {
+      border-collapse: collapse;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen p-4 md:p-8 font-sans text-slate-800">
+
+  <div class="max-w-6xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
+    <!-- Header -->
+    <div class="bg-blue-600 p-6 text-white text-center">
+      <h1 class="text-3xl font-bold">Enrollment Dashboard</h1>
+      <p class="text-blue-100 mt-2">Select a sheet below to view data and charts.</p>
+    </div>
+
+    <div class="p-6">
+      <!-- Navigation Menu (Buttons for each sheet) -->
+      <div id="nav-container" class="flex flex-wrap gap-3 justify-center mb-8 pb-6 border-b border-slate-200">
+        <!-- Spinner while loading sheet names -->
+        <div id="nav-loading" class="loader ease-linear rounded-full border-4 border-t-4 border-slate-200 h-8 w-8"></div>
+      </div>
+
+      <!-- Main Content Area -->
+      <div id="content-area" class="hidden">
+        
+        <h2 id="current-sheet-title" class="text-2xl font-bold text-center mb-6 text-slate-700"></h2>
+
+        <!-- Data Loading State -->
+        <div id="data-loading" class="hidden flex flex-col items-center justify-center py-12">
+          <div class="loader ease-linear rounded-full border-4 border-t-4 border-slate-200 h-12 w-12 mb-4"></div>
+          <p class="text-slate-500 font-medium">Fetching data from Google Sheets...</p>
+        </div>
+
+        <!-- Error Message Container -->
+        <div id="error-message" class="hidden bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6" role="alert">
+          <p id="error-text"></p>
+        </div>
+
+        <!-- Table Container -->
+        <div class="overflow-x-auto shadow-sm rounded-lg mb-10 border border-slate-300 hidden" id="table-container">
+          <table id="data-table" class="min-w-full text-sm sm:text-base">
+            <thead id="table-head" class="bg-slate-100"></thead>
+            <tbody id="table-body" class="bg-white"></tbody>
+          </table>
+        </div>
+
+        <!-- Charts Container -->
+        <div id="charts-container" class="flex flex-col items-center gap-8"></div>
+        
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ----------------------------------------------------
+    // Initialization
+    // ----------------------------------------------------
+    document.addEventListener('DOMContentLoaded', () => {
+      // Check if running inside Google Apps Script environment
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        // Ask Google Apps Script for the names of the sheets
+        google.script.run
+          .withSuccessHandler(initializeNavigation)
+          .getSheetNames();
+      } else {
+        // Provide mock data if viewing outside of Google Apps Script (like in this preview)
+        console.warn("Google Apps Script environment not detected. Using mock data for preview.");
+        initializeNavigation(['Mock Sheet 1', 'Mock Sheet 2']);
+      }
+    });
+
+    // ----------------------------------------------------
+    // UI Builders
+    // ----------------------------------------------------
+    function initializeNavigation(response) {
+      const navContainer = document.getElementById('nav-container');
+      document.getElementById('nav-loading').classList.add('hidden');
+
+      if (response.error) {
+        navContainer.innerHTML = `<p class="text-red-500 font-medium">Error: ${response.error}</p>`;
+        return;
+      }
+
+      const sheetNames = response;
+      if (!sheetNames || sheetNames.length === 0) {
+        navContainer.innerHTML = '<p class="text-slate-500">No sheets found in this document.</p>';
+        return;
+      }
+
+      // Create a button for each sheet
+      sheetNames.forEach((name, index) => {
+        const btn = document.createElement('button');
+        btn.className = 'tab-btn px-5 py-2.5 bg-white text-blue-600 font-medium border border-blue-600 rounded-lg shadow-sm hover:bg-blue-50 focus:ring-4 focus:ring-blue-100 transition-all duration-200';
+        btn.textContent = name;
+        btn.onclick = () => {
+          // Highlight active button
+          document.querySelectorAll('.tab-btn').forEach(b => {
+             b.classList.remove('bg-blue-600', 'text-white');
+             b.classList.add('bg-white', 'text-blue-600');
+          });
+          btn.classList.remove('bg-white', 'text-blue-600');
+          btn.classList.add('bg-blue-600', 'text-white');
+          
+          loadSheetData(name);
+        };
+        navContainer.appendChild(btn);
+      });
+
+      // Automatically load the first sheet
+      navContainer.querySelector('button').click();
+    }
+
+    function loadSheetData(sheetName) {
+      // Reset UI state
+      document.getElementById('content-area').classList.remove('hidden');
+      document.getElementById('table-container').classList.add('hidden');
+      document.getElementById('error-message').classList.add('hidden');
+      document.getElementById('charts-container').innerHTML = '';
+      document.getElementById('current-sheet-title').textContent = sheetName;
+      
+      // Show loading
+      document.getElementById('data-loading').classList.remove('hidden');
+
+      // Fetch data
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler(renderData)
+          .getSheetData(sheetName);
+      } else {
+        // Provide mock data for previewing
+        setTimeout(() => {
+          renderData({
+            success: true,
+            data: [
+              ['Student ID', 'Name', 'Course', 'Status', 'Enrollment Date'],
+              ['1001', 'John Doe', 'Computer Science', 'Enrolled', '2023-08-15'],
+              ['1002', 'Jane Smith', 'Business Admin', 'Enrolled', '2023-08-16'],
+              ['1003', 'Bob Johnson', 'Engineering', 'Dropped', '2023-09-01']
+            ],
+            charts: [] // Normally base64 chart strings would go here
+          });
+        }, 600);
+      }
+    }
+
+    function renderData(response) {
+      document.getElementById('data-loading').classList.add('hidden');
+
+      if (!response.success) {
+        document.getElementById('error-message').classList.remove('hidden');
+        document.getElementById('error-text').textContent = response.error || 'An unknown error occurred.';
+        return;
+      }
+
+      // Render Table
+      if (response.data && response.data.length > 0) {
+        buildTable(response.data);
+      }
+
+      // Render Charts
+      if (response.charts && response.charts.length > 0) {
+        const chartsContainer = document.getElementById('charts-container');
+        response.charts.forEach(chartBase64 => {
+          const img = document.createElement('img');
+          img.src = chartBase64;
+          img.className = 'w-full max-w-3xl h-auto border border-slate-200 rounded-xl shadow-md p-2 bg-white';
+          chartsContainer.appendChild(img);
+        });
+      }
+    }
+
+    function buildTable(data) {
+      document.getElementById('table-container').classList.remove('hidden');
+      const thead = document.getElementById('table-head');
+      const tbody = document.getElementById('table-body');
+      
+      thead.innerHTML = '';
+      tbody.innerHTML = '';
+
+      // Create Header Row (First row of data)
+      const headerRow = document.createElement('tr');
+      data[0].forEach((cell, index) => {
+        const th = document.createElement('th');
+        th.className = 'py-3 px-4 border-b-2 border-slate-300 font-bold text-slate-800 ' + (index === 0 ? 'text-left' : 'text-center');
+        th.textContent = cell;
+        headerRow.appendChild(th);
+      });
+      thead.appendChild(headerRow);
+
+      // Create Data Rows
+      for (let i = 1; i < data.length; i++) {
+        // Skip empty rows completely
+        if (data[i].every(cell => cell.trim() === '')) continue;
+
+        const row = document.createElement('tr');
+        row.className = 'hover:bg-slate-50 transition-colors duration-150';
+
+        data[i].forEach((cell, cellIndex) => {
+          const td = document.createElement('td');
+          // Check if it's a number to center align, otherwise left align
+          const isNumber = !isNaN(cell.replace(/,/g, '')) && cell.trim() !== '';
+          const alignment = (cellIndex === 0 && !isNumber) ? 'text-left font-semibold' : 'text-center';
+          
+          td.className = `py-3 px-4 border-b border-slate-200 text-slate-700 ${alignment}`;
+          td.textContent = cell;
+          row.appendChild(td);
+        });
+        tbody.appendChild(row);
+      }
+    }
+  </script>
+</body>
+</html>
