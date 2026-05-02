@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base target="_top">
+  <!-- Tailwind CSS for styling -->
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <style>
+    /* Loading Spinner CSS */
+    .loader {
+      border-top-color: #3b82f6;
+      -webkit-animation: spinner 1.5s linear infinite;
+      animation: spinner 1.5s linear infinite;
+    }
+    @keyframes spinner {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    /* Table basic styling to handle empty cells nicely */
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #e5e7eb; text-align: center; }
+    th { background-color: #f3f4f6; font-weight: bold; }
+  </style>
+</head>
+<body class="bg-gray-50 p-2 sm:p-4 font-sans text-gray-800">
+  <div class="max-w-7xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200">
+    
+    <!-- Top Header and Navigation Buttons -->
+    <div class="bg-blue-600 p-4 sm:p-5 text-white">
+      <h1 class="text-xl sm:text-2xl font-bold mb-3 sm:mb-4">Enrollment Data</h1>
+      <div id="nav-buttons" class="flex flex-wrap gap-2">
+        <!-- Buttons will be injected here via JavaScript -->
+        <span class="text-blue-200 text-sm italic py-2">Loading sheets...</span>
+      </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <div id="content-area" class="p-4 sm:p-6">
+      
+      <!-- Loading Indicator -->
+      <div id="loading" class="flex flex-col justify-center items-center py-16">
+        <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 sm:h-16 sm:w-16 mb-4"></div>
+        <p class="text-gray-500 font-medium text-sm sm:text-base">Fetching data from Google Sheets...</p>
+      </div>
+      
+      <!-- Data Container (Table & Charts) -->
+      <div id="sheet-content" class="hidden">
+        <!-- Dynamic content goes here -->
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Firebase Initialization -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    // You can import other Firebase services here in the future, for example:
+    // import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCsPGqbEaTlr-hfimdmtBti6Pbr8rfNmqQ",
+      authDomain: "enrollmentdata1.firebaseapp.com",
+      projectId: "enrollmentdata1",
+      storageBucket: "enrollmentdata1.firebasestorage.app",
+      messagingSenderId: "105236204585",
+      appId: "1:105236204585:web:c14ee64fe3b421881a6038"
+    };
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    console.log("Firebase has been successfully initialized!");
+  </script>
+
+  <!-- Main App Script -->
+  <script>
+    // State to keep track of the active button
+    let activeSheetName = '';
+    let currentSheetNames = [];
+    let autoRefreshInterval = null;
+
+    // --- Mock Data for Preview Environment ---
+    // This allows the app to be previewed outside of Google Apps Script
+    const MOCK_DATA = {
+      "SY 2025-2026": {
+        name: "SY 2025-2026",
+        data: [
+          ["", "Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12", "TOTAL"],
+          ["Male", 50, 47, 36, 25, 27, 11, 196],
+          ["Female", 31, 42, 36, 35, 35, 18, 197],
+          ["Total", 81, 89, 72, 60, 62, 29, 393]
+        ],
+        charts: ["data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22600%22%20height%3D%22300%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22%23f3f4f6%22%2F%3E%3Ctext%20x%3D%2250%25%22%20y%3D%2250%25%22%20dominant-baseline%3D%22middle%22%20text-anchor%3D%22middle%22%20font-family%3D%22sans-serif%22%20font-size%3D%2216%22%20fill%3D%22%239ca3af%22%3E(Chart%20will%20render%20here%20in%20Google%20Sites)%3C%2Ftext%3E%3C%2Fsvg%3E"]
+      },
+      "SY 2024-2025": {
+        name: "SY 2024-2025",
+        data: [
+          ["", "Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12", "TOTAL"],
+          ["Male", 45, 40, 30, 20, 25, 10, 170],
+          ["Female", 30, 40, 35, 30, 30, 15, 180],
+          ["Total", 75, 80, 65, 50, 55, 25, 350]
+        ],
+        charts: []
+      }
+    };
+
+    // Robust Initialization for iframes (Google Sites)
+    function initDashboard() {
+      showLoading(true);
+      
+      // Check if running inside Google Apps Script environment
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        // Call Google Apps Script backend
+        google.script.run
+          .withSuccessHandler((res) => {
+            initializeUI(res);
+            startAutoRefresh();
+          })
+          .withFailureHandler(showError)
+          .getInitialData();
+      } else {
+        // Fallback mock for local preview / canvas
+        console.log("Mocking Google Apps Script API for preview...");
+        setTimeout(() => {
+          initializeUI({
+            sheetNames: Object.keys(MOCK_DATA),
+            initialSheet: MOCK_DATA["SY 2025-2026"]
+          });
+          startAutoRefresh();
+        }, 800);
+      }
+    }
+
+    // Safely trigger initialization depending on document load state
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initDashboard);
+    } else {
+      initDashboard();
+    }
+
+    function startAutoRefresh() {
+      // Poll every 10 seconds for added/deleted sheets and data updates
+      autoRefreshInterval = setInterval(() => {
+        if (typeof google !== 'undefined' && google.script && google.script.run) {
+          google.script.run
+            .withSuccessHandler(handleAutoUpdate)
+            .getInitialData();
+        } else {
+          // Mock auto-update check
+          handleAutoUpdate({
+            sheetNames: Object.keys(MOCK_DATA),
+            initialSheet: MOCK_DATA[activeSheetName] || MOCK_DATA["SY 2025-2026"]
+          });
+        }
+      }, 10000);
+    }
+
+    function handleAutoUpdate(response) {
+      if (!response) return;
+
+      const newSheetNames = response.sheetNames;
+      const namesChanged = newSheetNames.length !== currentSheetNames.length || 
+                           !newSheetNames.every((val, index) => val === currentSheetNames[index]);
+
+      // If sheets were added or removed, immediately update the navigation buttons
+      if (namesChanged) {
+        currentSheetNames = newSheetNames;
+        rebuildNavButtons(newSheetNames);
+      }
+
+      // Re-fetch data for the currently active sheet silently in the background.
+      // If the active sheet was deleted from the Google Sheet, fall back to the first available sheet.
+      const sheetToLoad = newSheetNames.includes(activeSheetName) ? activeSheetName : newSheetNames[0];
+      
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler((data) => renderSheet(data, true))
+          .getSheetContent(sheetToLoad);
+      } else {
+        renderSheet(MOCK_DATA[sheetToLoad] || { name: sheetToLoad, data: [], charts: [] }, true);
+      }
+    }
+
+    function showLoading(show) {
+      document.getElementById('loading').style.display = show ? 'flex' : 'none';
+      document.getElementById('sheet-content').style.display = show ? 'none' : 'block';
+    }
+
+    function showError(error) {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('sheet-content').style.display = 'block';
+      document.getElementById('sheet-content').innerHTML = 
+        `<div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative">
+          <strong class="font-bold">Error!</strong>
+          <span class="block sm:inline"> Make sure you updated the SPREADSHEET_ID in Code.gs. Details: ${error.message}</span>
+        </div>`;
+    }
+
+    function initializeUI(response) {
+      if (!response) {
+        showError({message: "No data found or sheet is empty."});
+        return;
+      }
+
+      currentSheetNames = response.sheetNames;
+      activeSheetName = response.initialSheet.name;
+      rebuildNavButtons(currentSheetNames);
+
+      // Render the very first sheet
+      renderSheet(response.initialSheet);
+    }
+
+    function rebuildNavButtons(sheetNames) {
+      const navContainer = document.getElementById('nav-buttons');
+      navContainer.innerHTML = ''; // clear existing buttons
+      
+      sheetNames.forEach(name => {
+        const btn = document.createElement('button');
+        btn.textContent = name;
+        btn.id = `btn-${name}`;
+        
+        // Change style depending on whether this button represents the active sheet
+        if (name === activeSheetName) {
+          btn.className = 'nav-btn px-3 py-1.5 sm:px-4 sm:py-2 bg-white text-blue-700 hover:bg-gray-100 rounded transition-colors text-xs sm:text-sm font-medium shadow-sm';
+        } else {
+          btn.className = 'nav-btn px-3 py-1.5 sm:px-4 sm:py-2 bg-blue-500 hover:bg-blue-400 text-white rounded transition-colors text-xs sm:text-sm font-medium shadow-sm';
+        }
+        
+        btn.onclick = () => loadSheet(name);
+        navContainer.appendChild(btn);
+      });
+    }
+
+    function loadSheet(sheetName) {
+      // Don't reload if already active
+      if (activeSheetName === sheetName) return;
+      
+      activeSheetName = sheetName;
+      rebuildNavButtons(currentSheetNames); // Immediately show active state
+      showLoading(true);
+      
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler((data) => renderSheet(data, false))
+          .withFailureHandler(showError)
+          .getSheetContent(sheetName);
+      } else {
+        // Fallback mock
+        setTimeout(() => {
+          renderSheet(MOCK_DATA[sheetName] || { name: sheetName, data: [], charts: [] }, false);
+        }, 500);
+      }
+    }
+
+    function renderSheet(sheetData, isSilent = false) {
+      // If updating silently in the background, we skip showing/hiding the loading spinner
+      if (!isSilent) showLoading(false);
+      
+      activeSheetName = sheetData.name;
+      rebuildNavButtons(currentSheetNames); // Ensure active states remain in sync
+      
+      const container = document.getElementById('sheet-content');
+
+      // Start Building HTML
+      let html = `<h2 class="text-lg sm:text-xl font-bold mb-4 sm:mb-6 text-gray-800 border-b pb-2">${sheetData.name}</h2>`;
+
+      // 1. Render Table
+      if (sheetData.data && sheetData.data.length > 0) {
+        html += '<div class="overflow-x-auto mb-8 sm:mb-10 shadow-sm rounded-lg border border-gray-200">';
+        html += '<table class="min-w-full bg-white">';
+        
+        sheetData.data.forEach((row, rowIndex) => {
+          html += '<tr class="hover:bg-gray-50">';
+          row.forEach(cell => {
+            // Very basic heuristic: if first row, treat as header
+            if (rowIndex === 0) {
+              html += `<th class="px-2 py-2 sm:px-4 sm:py-3 text-xs sm:text-sm text-gray-700 uppercase tracking-wider whitespace-nowrap">${cell}</th>`;
+            } else {
+              // Align numbers to right, text to center
+              const alignClass = isNaN(cell) && cell.trim() !== '' ? 'text-left' : 'text-center';
+              html += `<td class="px-2 py-2 sm:px-4 sm:py-3 text-xs sm:text-sm text-gray-600 ${alignClass} whitespace-nowrap">${cell}</td>`;
+            }
+          });
+          html += '</tr>';
+        });
+        html += '</table></div>';
+      } else {
+        html += '<p class="text-gray-500 mb-8 italic text-sm sm:text-base">No table data found on this sheet.</p>';
+      }
+
+      // 2. Render Charts
+      if (sheetData.charts && sheetData.charts.length > 0) {
+        html += '<h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-gray-800 border-b pb-2">Visualizations</h3>';
+        html += '<div class="grid grid-cols-1 gap-4 sm:gap-8">';
+        sheetData.charts.forEach(chartBase64 => {
+          html += `
+            <div class="border rounded-xl shadow-sm p-2 sm:p-6 bg-gray-50 flex justify-center items-center">
+              <img src="${chartBase64}" alt="Sheet Chart" class="w-full max-w-5xl h-auto rounded">
+            </div>`;
+        });
+        html += '</div>';
+      }
+
+      container.innerHTML = html;
+    }
+  </script>
+</body>
+</html>
